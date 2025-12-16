@@ -1,5 +1,6 @@
-Project Overview
-Summary
+# Project Overview
+
+## Summary
 
 The TU Delft Astrodynamics Toolbox (Tudat) is an astrodynamics simulation tool in active development at the Space Engineering Department, Aerospace Faculty of TU Delft.
 
@@ -11,22 +12,25 @@ Determining the static gravity field of Mars would allow us to answer important 
 
 On Earth, the availability of GNSS enables accurate satellite orbit positions to be used as observations, also referred to as low-low Satellite-to-Satellite Tracking, to recover the low-degree components of the gravity field.
 
-Objectives
+---
+
+## Objectives
 
 The main objective of this research is to implement the processing of:
 
-Low-low Satellite-to-Satellite Tracking (ll-SST) data
-
-High-low Satellite-to-Satellite Tracking (hl-SST) data
+* Low-low Satellite-to-Satellite Tracking (ll-SST) data
+* High-low Satellite-to-Satellite Tracking (hl-SST) data
 
 for gravity field estimation within Tudat.
 
 Although verification of the developed software will be performed using simulated data, the primary objective is to use real observations from:
 
-GRACE
-
-GRACE-FO
-
-Swarm
+* GRACE
+* GRACE-FO
+* Swarm
 
 These datasets will be used to validate the resulting gravity field models.
+
+---
+
+
