@@ -4,6 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from orbit_simulator import OrbitalElements
 from plotter import Plotter
+from noise_generator import NoiseGenerator
 
 # Load tudatpy modules
 from tudatpy.interface import spice
@@ -76,12 +77,12 @@ earth_gravitational_parameter = bodies.get("Earth").gravitational_parameter
 # GRACE B
 
 grace_b_initial_orbital_elements = OrbitalElements(
-                              a_km=6871.0,
-                              e=0.0,
+                              a_km=6878.0,
+                              e=0.01,
                               i_deg=89.0,
                               raan_deg=0.0,
                               argp_deg=0.0,
-                              M0_deg=0.0,
+                              M_deg=0.0,
                            )
 
 grace_b_initial_state = element_conversion.keplerian_to_cartesian_elementwise(
@@ -92,7 +93,7 @@ grace_b_initial_state = element_conversion.keplerian_to_cartesian_elementwise(
    longitude_of_ascending_node=np.radians(grace_b_initial_orbital_elements.raan_deg),
    argument_of_periapsis=np.radians(grace_b_initial_orbital_elements.argp_deg),
    true_anomaly=element_conversion.mean_to_true_anomaly(
-                  mean_anomaly=np.radians(grace_b_initial_orbital_elements.M0_deg),
+                  mean_anomaly=np.radians(grace_b_initial_orbital_elements.M_deg),
                   eccentricity=grace_b_initial_orbital_elements.e,
                ),
 )
@@ -111,7 +112,7 @@ grace_a_initial_state = element_conversion.keplerian_to_cartesian_elementwise(
    longitude_of_ascending_node=np.radians(grace_a_initial_orbital_elements.raan_deg),
    argument_of_periapsis=np.radians(grace_a_initial_orbital_elements.argp_deg),
    true_anomaly=element_conversion.mean_to_true_anomaly(
-                  mean_anomaly=np.radians(grace_a_initial_orbital_elements.M0_deg),
+                  mean_anomaly=np.radians(grace_a_initial_orbital_elements.M_deg),
                   eccentricity=grace_a_initial_orbital_elements.e,
               ),
    )
@@ -172,4 +173,59 @@ plotter.plot_relative_position(
    velocity_data=grace_velocity_data,
    title="RTN relative position components - GRACE",
    file_name="grace_rtn_relative_position.png"
+)
+
+# =====================================
+# GPS POSITION MEASUREMENT SIMULATION 
+# =====================================
+
+sigma_gps_position_rtn = np.array([0.01, 0.02, 0.02])  # [R, T, N] in meters
+
+eci_gps_position_noise_grace_a, rtn_gps_position_noise_grace_a = NoiseGenerator.generate_gps_position_noise(
+    state_vector=states_array[:, 1:7],  # GRACE-A state
+    sigma_rtn=sigma_gps_position_rtn,
+    seed=40
+)
+
+eci_gps_position_noise_grace_b, rtn_gps_position_noise_grace_b = NoiseGenerator.generate_gps_position_noise(
+    state_vector=states_array[:, 7:13],  # GRACE-B state
+    sigma_rtn=sigma_gps_position_rtn,
+    seed=41
+)
+
+Plotter.plot_rtn_error_projections(
+    plotter,
+    samples_rtn=rtn_gps_position_noise_grace_a[0, :, :],  
+    sigma_rtn=sigma_gps_position_rtn,
+    epoch_idx=10,
+    file_name="grace_a_gps_noise_rtn_projections_epoch_10.png"
+)
+
+Plotter.plot_rtn_error_projections(
+    plotter,
+    samples_rtn=rtn_gps_position_noise_grace_b[0, :, :],  
+    sigma_rtn=sigma_gps_position_rtn,
+    epoch_idx=10,
+    file_name="grace_b_gps_noise_rtn_projections_epoch_10.png"
+)
+
+
+# =====================================
+# KBR RANGE MEASUREMENT SIMULATION 
+# =====================================
+
+sigma_rho = 1e-6  # KBR range noise standard deviation in meters
+num_epochs = states_array.shape[0]
+
+kbr_range_noise = NoiseGenerator.generate_kbr_range_noise(
+    num_epochs=num_epochs,
+    sigma_rho=sigma_rho,
+    seed=42)
+
+Plotter.plot_kbr_range_noise_histogram_and_distribution(
+    plotter,
+    range_error_samples=kbr_range_noise[10, :],
+    sigma_rho=sigma_rho,
+    epoch_idx=10,
+    file_name="kbr_range_noise_epoch_10.png",
 )
