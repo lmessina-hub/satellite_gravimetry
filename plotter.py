@@ -1,11 +1,13 @@
 from turtle import color
-import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.colors as mcolors
 
 from pathlib import Path
 
 import matplotlib as mpl
+mpl.use("Agg") 
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 
 def apply_publication_style():
     mpl.rcParams.update({
@@ -42,6 +44,7 @@ def apply_publication_style():
 
     })
 
+
 apply_publication_style()
 
 class Plotter:
@@ -56,8 +59,13 @@ class Plotter:
         ax = fig.add_subplot(111, projection="3d")
         ax.set_title(title)
 
+        earth_texture_path = Path("data/earth_texture.jpg")
+
+        self._add_earth(ax, texture_path=earth_texture_path)
+
         cmap = plt.get_cmap("tab10")
         linestyles = ["-", "--", "-.", ":"]
+
 
         for i in range(no_satellites):
             if i == 0:
@@ -78,13 +86,6 @@ class Plotter:
                 marker="x", s=110, color=ending_point_color, linewidth=1.6,
                 label=f"{sat_labels[i]} end"
             )
-        R_earth = 6378.1363e3  # [m] WGS-84 equatorial radius (used only for plotting)
-        u = np.linspace(0, 2*np.pi, 120)
-        v = np.linspace(0, np.pi, 120)
-        xs = R_earth * np.outer(np.cos(u), np.sin(v))
-        ys = R_earth * np.outer(np.sin(u), np.sin(v))
-        zs = R_earth * np.outer(np.ones_like(u), np.cos(v))
-        ax.plot_surface(xs, ys, zs, color="lightgray", alpha=0.25, zorder=0)
 
         data = np.vstack([position_data[i] for i in range(no_satellites)])
         self._set_equal_3d_axes(ax, data)
@@ -96,7 +97,7 @@ class Plotter:
         ax.grid(True)
 
         plt.tight_layout()
-        plt.savefig(self.output_path / file_name)
+        plt.savefig(self.output_path / file_name, dpi = 720)
 
     @staticmethod
     def _mix_with_white(color, amount=0.5):
@@ -127,6 +128,49 @@ class Plotter:
         ax.set_ylim(mid_y - max_range, mid_y + max_range)
         ax.set_zlim(mid_z - max_range, mid_z + max_range)
         ax.set_box_aspect([1, 1, 1])
+
+    @staticmethod
+    def _add_earth(ax, texture_path: Path | None) -> None:
+        """
+        Add an Earth sphere centered at the origin.
+        """
+        # Sphere parameterization
+        n_lon, n_lat = 720, 360  # increase for smoother sphere, decrease for speed
+        lon = np.linspace(-np.pi, np.pi, n_lon)
+        lat = np.linspace(-np.pi / 2, np.pi / 2, n_lat)
+        lon2, lat2 = np.meshgrid(lon, lat)
+        radius_m = 6378137.0 - 1100000.0
+
+        x = radius_m * np.cos(lat2) * np.cos(lon2)
+        y = radius_m * np.cos(lat2) * np.sin(lon2)
+        z = radius_m * np.sin(lat2)
+
+        # Read texture (expects equirectangular: width=2*height typically)
+        img = mpimg.imread(str(texture_path))
+        if img.dtype != np.float32 and img.dtype != np.float64:
+            img = img.astype(np.float32) / 255.0
+
+        # Map lon/lat -> texture coordinates (u in [0,1], v in [0,1])
+        u = (lon2 + np.pi) / (2 * np.pi)
+        v = (lat2 + np.pi / 2) / np.pi
+
+        # Convert to pixel indices
+        h, w = img.shape[0], img.shape[1]
+        px = np.clip((u * (w - 1)).astype(int), 0, w - 1)
+        py = np.clip(((1 - v) * (h - 1)).astype(int), 0, h - 1)  # flip vertical for image coords
+
+        facecolors = img[py, px]
+
+        ax.plot_surface(
+            x, y, z,
+            facecolors=facecolors,
+            rstride=1, cstride=1,
+            linewidth=0,
+            antialiased=True,
+            shade=True,   # IMPORTANT: keep False so texture colors are not altered
+            alpha=1.0
+        )
+
 
     def plot_relative_position(self, time_data, position_data, velocity_data, title, file_name):
         """Plot the relative position in the RTN frame between the satellites pair over time."""
@@ -199,7 +243,7 @@ class Plotter:
             ax.minorticks_on()
             ax.grid(False, which="minor")   
             ax.legend()
-            ax.spines["top"].set_visible(False)
+            ax.spines["top"].set_linewidth(False)
             ax.spines["right"].set_visible(False)
             ax.spines["left"].set_linewidth(1.2)
             ax.spines["bottom"].set_linewidth(1.2)
@@ -260,7 +304,7 @@ class Plotter:
         # Overlay Gaussian
         ax.plot(x, pdf, linewidth=2.5, color="#073AA0", label=r"Gaussian PDF")
 
-        ax.set_title(f"KBR range noise distribution (Epoch {epoch_idx})")
+        ax.set_title(f"KBR range noise distribution (Epoch {epoch_idx})", pad=10)
         ax.set_xlabel("Range noise error [m]")
         ax.set_ylabel("Probability density [-]")
 
@@ -268,8 +312,8 @@ class Plotter:
         ax.grid(True, which="major", linewidth=0.8, alpha=0.25)
         ax.minorticks_on()
         ax.grid(False, which="minor")
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+        ax.spines["top"].set_linewidth(1.2)
+        ax.spines["right"].set_linewidth(1.2)
         ax.spines["left"].set_linewidth(1.2)
         ax.spines["bottom"].set_linewidth(1.2)
 
@@ -278,3 +322,197 @@ class Plotter:
         fig.tight_layout()
         fig.savefig(self.output_path / file_name, bbox_inches="tight")
         plt.close(fig)
+
+    def plot_acceleration_finite_difference_statistics(
+        self,
+        scenario: str,
+        time: np.ndarray,
+        results: dict[int, dict],
+    ) -> None:
+        """
+        Create plots for finite-difference acceleration validation.
+
+        Produces:
+          - plots of the error components time evolution, overlaying all accuracy orders
+          - plots of the error norm time evolution, overlaying all accuracy orders and including RMS in legend
+
+        Parameters
+        ----------
+        satellite_name : str
+            Identifier used in titles and filenames.
+        time : np.ndarray, shape (N,)
+            Time stamps [s].
+        results : dict[int, dict]
+            Output of validate_numerical_position_differentiation keyed by accuracy order.
+            Must contain keys: 'error_vector', 'error_norm', 'error_rms'.
+        file_prefix : str | None
+            Optional prefix for filenames. If None, derived from satellite_name.
+        """
+        if time.ndim != 1:
+            raise ValueError("Time must be a 1D array.")
+        file_prefix = scenario.replace(" ", "_")
+        propagation_time = time - time[0] # [s] time since start
+
+
+        # -------------
+        # Component plots
+        # -------------
+        comp_labels = [
+            r"$|\epsilon_{a_x}(t)|$",
+            r"$|\epsilon_{a_y}(t)|$",
+            r"$|\epsilon_{a_z}(t)|$",
+        ]
+
+        file_suffix = ["x", "y", "z"]
+        comp_titles = [
+            r"Acceleration error component: $\epsilon_{a_x}(t)$",
+            r"Acceleration error component: $\epsilon_{a_y}(t)$",
+            r"Acceleration error component: $\epsilon_{a_z}(t)$",
+        ]
+
+        for j in range(3):
+            fig = plt.figure(figsize=(8.5, 4.8), dpi=160)
+            ax = fig.add_subplot(111)
+
+            for accuracy in sorted(results.keys()):
+                error_vector = np.asarray(results[accuracy]["error_vector"], dtype=float)
+                
+                ax.plot(
+                    propagation_time,
+                    np.abs(error_vector[:, j]),
+                    "-o",
+                    markersize=3.5,
+                    linewidth=1.8,
+                    label=rf"$p={accuracy}$",
+                )
+
+            ax.set_title(rf"{scenario} — {comp_titles[j]}", pad=14)
+            ax.set_xlabel("Propagation Time [s]")
+            ax.set_ylabel(rf"{comp_labels[j]} [m/s$^2$] ")
+            ax.set_yscale("log")
+
+
+            self._style_axes(ax)
+            ax.legend(
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.22),   # below x-axis
+                ncol=min(5, len(results)),     # one row (up to 5 columns; adjust if needed)
+                frameon=True,
+                fontsize=10,
+                handlelength=2.0,
+                columnspacing=1.2,
+            )
+
+            fig.tight_layout()
+            fig.subplots_adjust(bottom=0.25)   # add room for legend below
+            fig.savefig(self.output_path / f"{file_prefix}_acceleration_error_component_{file_suffix[j]}.png", bbox_inches="tight")
+            plt.close(fig)
+
+        # -------------
+        # Norm plot with RMS in legend
+        # -------------
+        fig = plt.figure(figsize=(9.5, 5.3), dpi=160)
+        ax = fig.add_subplot(111)
+
+        for accuracy in sorted(results.keys()):
+            error_norm = np.asarray(results[accuracy]["error_norm"], dtype=float).reshape(-1)
+
+            rms = float(results[accuracy]["error_rms"])
+            ax.plot(
+                propagation_time,
+                error_norm,
+                "-o",
+                markersize=3.5,
+                linewidth=1.8,
+                label=rf"$p={accuracy}\;(\mathrm{{RMS}}={rms:.3e}\,\mathrm{{m\,s^{{-2}}}})$",
+            )
+
+        ax.set_title(rf"{scenario} — Acceleration error norm $\|\epsilon(t)\|$", pad=10)
+        ax.set_xlabel("Propagation Time [s]")
+        ax.set_ylabel(r"$\|\epsilon(t)\|$ [m/s$^2$]")
+        ax.set_yscale("log")
+
+        self._style_axes(ax)
+
+        ax.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.15),   # below x-axis
+            ncol=min(3, len(results)),     # one row (up to 5 columns; adjust if needed)
+            frameon=True,
+            fontsize=10,
+            handlelength=2.0,
+            columnspacing=1.2,
+        )
+
+        fig.tight_layout()
+        fig.subplots_adjust(bottom=0.10)   # add room for legend below
+        out = self.output_path / f"{file_prefix}_acceleration_error_norm.png"
+        fig.savefig(out, bbox_inches="tight")
+        plt.close(fig)
+
+
+    def plot_los_intersatellite_acceleration_finite_difference_statistics(
+        self,
+        scenario: str,
+        time: np.ndarray,
+        results: dict[int, dict],
+    ) -> None:
+        """
+        Plot LOS-projected inter-satellite acceleration validation results.
+
+        Produces:
+        - Absolute Error with legend including RMS for each accuracy order (log y)
+
+        """
+        if time.ndim != 1:
+            raise ValueError("Time must be a 1D array.")
+
+        file_prefix = scenario.replace(" ", "_")
+        propagation_time = time - time[0]
+
+        fig = plt.figure(figsize=(9.5, 5.3), dpi=160)
+        ax = fig.add_subplot(111)
+
+        for accuracy in sorted(results.keys()):
+            absolute_error = np.asarray(results[accuracy]["absolute_error"], dtype=float).reshape(-1)
+            error_rms = float(results[accuracy]["error_rms"])
+
+            ax.plot(
+                propagation_time,
+                absolute_error,
+                "-o",
+                markersize=3.5,
+                linewidth=1.8,
+                label=rf"$p={accuracy}\;(\mathrm{{RMS}}={error_rms:.3e}\,\mathrm{{m\,s^{{-2}}}})$",
+            )
+
+        ax.set_title(rf"{scenario} ", pad=10)
+        ax.set_xlabel("Propagation Time [s]")
+        ax.set_ylabel(r"$|\epsilon_{a_{\mathrm{LOS}}(t)}|$ [m/s$^2$]")
+        ax.set_yscale("log")
+
+        self._style_axes(ax)
+
+        ax.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.15),
+            ncol=min(3, len(results)),
+            frameon=True,
+            fontsize=10,
+            handlelength=2.0,
+            columnspacing=1.2,
+        )
+
+        fig.tight_layout()
+        fig.subplots_adjust(bottom=0.10)
+        fig.savefig(self.output_path / f"{file_prefix}.png", bbox_inches="tight")
+        plt.close(fig)
+
+    def _style_axes(self, ax: plt.Axes) -> None:
+        ax.minorticks_on()
+        ax.grid(False, which="minor")
+        ax.spines["left"].set_linewidth(1.2)
+        ax.spines["bottom"].set_linewidth(1.2)
+        ax.spines["top"].set_linewidth(1.2)
+        ax.spines["right"].set_linewidth(1.2)
+        ax.set_axisbelow(True)

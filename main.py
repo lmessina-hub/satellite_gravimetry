@@ -159,13 +159,13 @@ grace_velocity_data = [
     states_array[:, 10:13],  # GRACE-B velocity
 ]
 
-plotter.plot_orbits(
-    no_satellites=2,
-    position_data=grace_position_data,
-    title="GRACE-A and GRACE-B orbits",
-    sat_labels=["GRACE-A", "GRACE-B"],
-    file_name="grace_nominal_orbits.png"
-)
+# plotter.plot_orbits(
+#     no_satellites=2,
+#     position_data=grace_position_data,
+#     title="GRACE-A and GRACE-B orbits",
+#     sat_labels=["GRACE-A", "GRACE-B"],
+#     file_name="grace_nominal_orbits.png"
+# )
 
 plotter.plot_relative_position(
    time_data=time_data,
@@ -229,3 +229,4 @@ Plotter.plot_kbr_range_noise_histogram_and_distribution(
     epoch_idx=10,
     file_name="kbr_range_noise_epoch_10.png",
 )
+
