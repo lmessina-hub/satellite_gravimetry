@@ -1,6 +1,7 @@
-from turtle import color
 import numpy as np
 import matplotlib.colors as mcolors
+import json
+
 
 from pathlib import Path
 
@@ -221,7 +222,7 @@ class Plotter:
         cmap = plt.get_cmap("tab10")
 
 
-        fig = plt.figure(figsize=(14, 5))
+        fig = plt.figure(figsize=(14.9, 5))
         for i, (a, b, la, lb) in enumerate(planes, start=1):
             ax = fig.add_subplot(1, 3, i)
 
@@ -516,3 +517,142 @@ class Plotter:
         ax.spines["top"].set_linewidth(1.2)
         ax.spines["right"].set_linewidth(1.2)
         ax.set_axisbelow(True)
+
+    def plot_pointing_angles_asd(
+        self,
+        file_name: str,
+        pitch_history_json_path: Path,
+        yaw_history_json_path: Path,
+        roll_history_json_path: Path
+    ) -> None:
+        """Plot ASD of roll/pitch/yaw pointing angles from plot-digitizer JSON files."""
+
+        json_paths = [roll_history_json_path, pitch_history_json_path, yaw_history_json_path]
+        color = ["blue", "red", "green"]
+        labels = ["Roll", "Pitch", "Yaw"]
+
+        fig = plt.figure(figsize=(10, 6))
+
+        for i, path in enumerate(json_paths):
+            with open(path, "r") as f:
+                data = json.load(f)
+
+            x = np.array([float(d["x"]) for d in data], dtype=float)
+            y = np.array([float(d["y"]) for d in data], dtype=float)
+            # Sort by frequency
+            idx = np.argsort(x)
+            # Match the paper legend colors: Roll=blue, Pitch=red, Yaw=green
+            plt.loglog(x[idx],  y[idx],  linewidth=2, color=color[i],  label=labels[i])
+
+        plt.title("ASD of Pointing Angles (plot digitizer)")
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel(r"ASD [rad Hz$^{-1/2}$]")
+        plt.legend(loc="upper right", frameon=True)
+
+        fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
+        plt.close(fig)
+
+    def plot_linear_interpolation_comparison(
+        self,
+        original_frequencies: np.ndarray,
+        original_asd_values: np.ndarray,
+        interpolated_frequencies: np.ndarray,
+        interpolated_asd_values: np.ndarray,
+        file_name: str
+    ) -> None:
+        """Plot comparison between original and linearly interpolated ASD data."""
+
+        fig = plt.figure(figsize=(10, 6))
+
+        plt.loglog(original_frequencies,  original_asd_values, color="#073AA0", label='Original ASD Data', linewidth=4)
+        plt.loglog(interpolated_frequencies, interpolated_asd_values, color="#D8660E", label='Interpolated ASD Data', linewidth=2, linestyle='--')
+
+        plt.title("ASD Data: Original vs Interpolated")
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel(r"ASD [rad Hz$^{-1/2}$]")
+        plt.legend(loc="upper right", frameon=True)
+
+        fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
+        plt.close(fig)
+
+    def plot_angle_noise_time_series(
+        self,
+        noise_time_series,
+        file_name: str
+    ) -> None:
+        """Plot time series of pointing angle noise."""
+
+        fig = plt.figure(figsize=(10, 6))
+
+        plt.plot(noise_time_series.sample_times, noise_time_series, color="#073AA0", linewidth=1.8)
+
+        plt.title("Pointing Angle Noise Time Series")
+        plt.xlabel("Time [s]")
+        plt.ylabel("Pointing Angle Noise [rad]")
+
+        fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
+        plt.close(fig)
+
+    def plot_welch_estimated_psd_comparison(
+        self,
+        estimated_frequencies: np.ndarray,
+        estimated_psd_values: np.ndarray,
+        input_frequencies: np.ndarray,
+        input_psd_values: np.ndarray,
+        file_name: str,
+        ordinate_label: str = r"PSD [rad$^2$ Hz$^{-1}$]",
+        title: str = "Pointing Angle PSD"
+    ) -> None:
+        """Plot comparison between Welch estimated PSD and input PSD."""
+
+        fig = plt.figure(figsize=(10, 6))
+
+        plt.loglog(input_frequencies,  input_psd_values, color="#073AA0", label='Input PSD', linewidth=3)
+        plt.loglog(estimated_frequencies, estimated_psd_values, color="#D8660E", label='Welch Estimated PSD', linewidth=1.8, linestyle='--')
+
+        plt.title(title)
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel(ordinate_label)
+        plt.legend(loc="upper right", frameon=True)
+
+        fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
+        plt.close(fig)
+
+
+    def plot_kbr_system_and_oscillator_asd(
+        self,
+        frequencies: np.ndarray,
+        asd_values: np.ndarray,
+        file_name: str
+    ) -> None:
+        """Plot KBR system and oscillator ASD."""
+
+        fig = plt.figure(figsize=(10, 6))
+
+        plt.loglog(frequencies,  asd_values, color="#073AA0", label='Analytical ASD', linewidth=4)
+
+        plt.title("KBR System and Oscillator Noise ASD")
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel(r"ASD [m Hz$^{-1/2}$]")
+        plt.legend(loc="upper right", frameon=True)
+
+        fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
+        plt.close(fig)
+
+    def plot_kbr_system_and_oscillator_noise_time_series(
+        self,
+        noise_time_series,
+        file_name: str
+    ) -> None:
+        """Plot time series of KBR noise and oscillator noise."""
+
+        fig = plt.figure(figsize=(10, 6))
+
+        plt.plot(noise_time_series.sample_times, noise_time_series, color="#073AA0", linewidth=1.8)
+
+        plt.title("KBR System and Oscillator Noise Time Series")
+        plt.xlabel("Time [s]")
+        plt.ylabel("KBR System and Oscillator Noise [m]")
+
+        fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
+        plt.close(fig)
