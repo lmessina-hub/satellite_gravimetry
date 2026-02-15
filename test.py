@@ -1,8 +1,15 @@
+# NOTE: Load warning module and filter out specific deprecation warnings
+# to avoid cluttering log outpuyt with irrelevant messages.
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API"
+)
+
 # Load standard modules
 from pathlib import Path
 import numpy as np
 import differentiator
-from matplotlib import pyplot as plt
 from orbit_simulator import OrbitalElements
 from findiff.coefs import coefficients, coefficients_non_uni
 from typing import Any

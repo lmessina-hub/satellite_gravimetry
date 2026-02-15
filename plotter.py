@@ -66,6 +66,7 @@ class Plotter:
 
         cmap = plt.get_cmap("tab10")
         linestyles = ["-", "--", "-.", ":"]
+        linewidth = [4, 2]
 
 
         for i in range(no_satellites):
@@ -73,18 +74,17 @@ class Plotter:
                 reference_color =  "#073AA0"
             else:
                 reference_color = cmap(i)
-            starting_point_color = self._mix_with_white(reference_color, amount=0.35)  # lighter
-            ending_point_color   = self._mix_with_black(reference_color, amount=0.25)  # darker
+            point_color = self._mix_with_white(reference_color, amount=0.35)  # lighter
             ax.plot(position_data[i][:, 0], position_data[i][:, 1], position_data[i][:, 2], label=sat_labels[i],
-                     linewidth=3, color=reference_color, linestyle=linestyles[i % len(linestyles)])
+                     linewidth=linewidth[i % len(linewidth)], color=reference_color, linestyle=linestyles[i % len(linestyles)])
             ax.scatter(
                 position_data[i][0, 0], position_data[i][0, 1], position_data[i][0, 2],
-                marker="o", s=80, color=starting_point_color, edgecolor="k", linewidth=0.8,
+                marker="o", s=80, color=point_color, edgecolor="k", linewidth=0.8,
                 label=f"{sat_labels[i]} start"
             )
             ax.scatter(
                 position_data[i][-1, 0], position_data[i][-1, 1], position_data[i][-1, 2],
-                marker="x", s=110, color=ending_point_color, linewidth=1.6,
+                marker="x", s=110, color=point_color, linewidth=1.6,
                 label=f"{sat_labels[i]} end"
             )
 
@@ -253,76 +253,6 @@ class Plotter:
         plt.tight_layout()
         plt.savefig(self.output_path / file_name)
 
-    def plot_kbr_range_noise_histogram_and_distribution(
-        self,
-        range_error_samples: np.ndarray,
-        sigma_rho: float,
-        epoch_idx: int,
-        file_name: str,
-        bins: int = 40,
-    ):
-        """
-        Plot KBR range noise samples for a given epoch as a histogram (density)
-        with the target Gaussian PDF N(0, sigma_rho^2) overlaid.
-
-        Parameters
-        ----------
-        range_error_samples : np.ndarray
-            Array of sampled range noise for a single epoch.
-        sigma_rho : float
-            Standard deviation of range noise [m].
-        epoch_idx : int
-            Epoch index.
-        file_name : str
-            Output filename (saved under self.output_path).
-        bins : int
-            Histogram bins.
-        """
-
-        range_error_samples = np.asarray(range_error_samples).reshape(-1)
-
-        x_lim = 4.0 * sigma_rho
-        x = np.linspace(-x_lim, x_lim, 800)
-
-        # Gaussian PDF computation
-        pdf = (1.0 / (sigma_rho * np.sqrt(2.0 * np.pi))) * np.exp(-0.5 * (x / sigma_rho) ** 2)
-
-        fig = plt.figure(figsize=(7.0, 4.5), dpi=140)
-        ax = fig.add_subplot(111)
-
-        # Histogram as density
-        ax.hist(
-            range_error_samples,
-            bins=bins,
-            density=True,
-            color="0.65",
-            edgecolor="0.25",
-            linewidth=0.8,
-            alpha=0.75,
-            label="Sampled KBR noise",
-        )
-
-        # Overlay Gaussian
-        ax.plot(x, pdf, linewidth=2.5, color="#073AA0", label=r"Gaussian PDF")
-
-        ax.set_title(f"KBR range noise distribution (Epoch {epoch_idx})", pad=10)
-        ax.set_xlabel("Range noise error [m]")
-        ax.set_ylabel("Probability density [-]")
-
-        # Publication-style cosmetics consistent with your other plots
-        ax.grid(True, which="major", linewidth=0.8, alpha=0.25)
-        ax.minorticks_on()
-        ax.grid(False, which="minor")
-        ax.spines["top"].set_linewidth(1.2)
-        ax.spines["right"].set_linewidth(1.2)
-        ax.spines["left"].set_linewidth(1.2)
-        ax.spines["bottom"].set_linewidth(1.2)
-
-
-        ax.legend(frameon=True, fontsize=11, loc="upper right")
-        fig.tight_layout()
-        fig.savefig(self.output_path / file_name, bbox_inches="tight")
-        plt.close(fig)
 
     def plot_acceleration_finite_difference_statistics(
         self,
@@ -382,8 +312,8 @@ class Plotter:
                     propagation_time,
                     np.abs(error_vector[:, j]),
                     "-o",
-                    markersize=3.5,
-                    linewidth=1.8,
+                    markersize=2.5,
+                    linewidth=1.5,
                     label=rf"$p={accuracy}$",
                 )
 
@@ -423,8 +353,8 @@ class Plotter:
                 propagation_time,
                 error_norm,
                 "-o",
-                markersize=3.5,
-                linewidth=1.8,
+                markersize=2.2,
+                linewidth=1.2,
                 label=rf"$p={accuracy}\;(\mathrm{{RMS}}={rms:.3e}\,\mathrm{{m\,s^{{-2}}}})$",
             )
 
@@ -482,8 +412,8 @@ class Plotter:
                 propagation_time,
                 absolute_error,
                 "-o",
-                markersize=3.5,
-                linewidth=1.8,
+                markersize=2.2,
+                linewidth=1.2,
                 label=rf"$p={accuracy}\;(\mathrm{{RMS}}={error_rms:.3e}\,\mathrm{{m\,s^{{-2}}}})$",
             )
 
@@ -607,8 +537,8 @@ class Plotter:
 
         fig = plt.figure(figsize=(10, 6))
 
-        plt.loglog(input_frequencies,  input_psd_values, color="#073AA0", label='Input PSD', linewidth=3)
         plt.loglog(estimated_frequencies, estimated_psd_values, color="#D8660E", label='Welch Estimated PSD', linewidth=1.8, linestyle='--')
+        plt.loglog(input_frequencies,  input_psd_values, color="#073AA0", label='Input PSD', linewidth=3)
 
         plt.title(title)
         plt.xlabel("Frequency [Hz]")
@@ -653,6 +583,49 @@ class Plotter:
         plt.title("KBR System and Oscillator Noise Time Series")
         plt.xlabel("Time [s]")
         plt.ylabel("KBR System and Oscillator Noise [m]")
+
+        fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
+        plt.close(fig)
+
+    
+    def plot_apc_pointing_jitter_coupling_time_series_demeaned(
+        self,
+        apc_pointing_jitter_coupling_noise: dict[str, np.ndarray],
+        time_seconds: np.ndarray,
+        satellite_label: str,
+        file_name: str,
+    ) -> None:
+        """
+        Plot APC offset pointing jitter coupling noise (demeaned) for a single satellite.
+
+        Parameters
+        ----------
+        apc_pointing_jitter_coupling_noise : dict[str, np.ndarray]
+            Dict containing APC coupling noise arrays in meters, keyed by satellite name.
+        time_seconds : np.ndarray
+            Time array in seconds (shape (N,)).
+        satellite_label : str
+            Satellite key.
+        file_name : str
+            Output file name (saved under self.output_path).
+        """
+
+        if satellite_label not in apc_pointing_jitter_coupling_noise:
+            raise KeyError(f"Satellite '{satellite_label}' not found in APC coupling noise dict.")
+
+        value = np.asarray(apc_pointing_jitter_coupling_noise[satellite_label], dtype=float).reshape(-1)
+        time = np.asarray(time_seconds, dtype=float).reshape(-1)
+
+        if time.shape[0] != value.shape[0]:
+            raise ValueError(f"Time and APC noise length mismatch: len(time)={time.shape[0]} vs len(value)={value.shape[0]}")
+        value_demeaned = value - np.mean(value)
+
+        fig = plt.figure(figsize=(10, 6))
+        plt.plot(time, value_demeaned, color="#073AA0", linewidth=1.8)
+
+        plt.title(f"APC Pointing Jitter Coupling Noise (Demeaned) — {satellite_label}")
+        plt.xlabel("Time [s]")
+        plt.ylabel("APC coupling noise (demeaned) [m]")
 
         fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
         plt.close(fig)

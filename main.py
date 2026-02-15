@@ -1,7 +1,14 @@
+# NOTE: Load warning module and filter out specific deprecation warnings
+# to avoid cluttering log outpuyt with irrelevant messages.
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API"
+)
+
 # Load standard modules
 from pathlib import Path
 import numpy as np
-from matplotlib import pyplot as plt
 from orbit_simulator import OrbitalElements
 from plotter import Plotter
 from noise_generator import NoiseGenerator
@@ -55,7 +62,7 @@ acceleration_models = dynamics.propagation_setup.create_acceleration_models(
 
 # TODO: Update simulation time to match 1 month of propagation duration.
 simulation_start_epoch = DateTime(2005, 3, 1, 0, 0, 0).to_epoch()
-simulation_end_epoch = DateTime(2005, 4, 1, 1, 0, 0).to_epoch() 
+simulation_end_epoch = DateTime(2005, 4, 1, 0, 0, 0).to_epoch() 
 
 # Create numerical integrator settings
 integrator_settings = dynamics.propagation_setup.integrator.runge_kutta_fixed_step(
@@ -180,39 +187,39 @@ plotter.plot_relative_position(
    file_name="grace_fo_rtn_relative_position.png"
 )
 
-# =====================================
-# GPS POSITION MEASUREMENT SIMULATION 
-# =====================================
+# # =====================================
+# # GPS POSITION MEASUREMENT SIMULATION 
+# # =====================================
 
-sigma_gps_position_rtn = np.array([0.02, 0.02, 0.02])  # [R, T, N] in meters
+# sigma_gps_position_rtn = np.array([0.02, 0.02, 0.02])  # [R, T, N] in meters
 
-eci_gps_position_noise_grace_fo_a, rtn_gps_position_noise_grace_fo_a = NoiseGenerator.generate_gps_position_noise(
-    state_vector=states_array[:, 1:7],  # GRACE-FO A state
-    sigma_rtn=sigma_gps_position_rtn,
-    seed=40
-)
+# eci_gps_position_noise_grace_fo_a, rtn_gps_position_noise_grace_fo_a = NoiseGenerator.generate_gps_position_noise(
+#     state_vector=states_array[:, 1:7],  # GRACE-FO A state
+#     sigma_rtn=sigma_gps_position_rtn,
+#     seed=40
+# )
 
-eci_gps_position_noise_grace_fo_b, rtn_gps_position_noise_grace_fo_b = NoiseGenerator.generate_gps_position_noise(
-    state_vector=states_array[:, 7:13],  # GRACE-FO B state
-    sigma_rtn=sigma_gps_position_rtn,
-    seed=41
-)
+# eci_gps_position_noise_grace_fo_b, rtn_gps_position_noise_grace_fo_b = NoiseGenerator.generate_gps_position_noise(
+#     state_vector=states_array[:, 7:13],  # GRACE-FO B state
+#     sigma_rtn=sigma_gps_position_rtn,
+#     seed=41
+# )
 
-Plotter.plot_rtn_error_projections(
-    plotter,
-    samples_rtn=rtn_gps_position_noise_grace_fo_a[0, :, :],  
-    sigma_rtn=sigma_gps_position_rtn,
-    epoch_idx=10,
-    file_name="grace_fo_a_gps_noise_rtn_projections_epoch_10.png"
-)
+# Plotter.plot_rtn_error_projections(
+#     plotter,
+#     samples_rtn=rtn_gps_position_noise_grace_fo_a[0, :, :],  
+#     sigma_rtn=sigma_gps_position_rtn,
+#     epoch_idx=10,
+#     file_name="grace_fo_a_gps_noise_rtn_projections_epoch_10.png"
+# )
 
-Plotter.plot_rtn_error_projections(
-    plotter,
-    samples_rtn=rtn_gps_position_noise_grace_fo_b[0, :, :],  
-    sigma_rtn=sigma_gps_position_rtn,
-    epoch_idx=20,
-    file_name="grace_fo_b_gps_noise_rtn_projections_epoch_20.png"
-)
+# Plotter.plot_rtn_error_projections(
+#     plotter,
+#     samples_rtn=rtn_gps_position_noise_grace_fo_b[0, :, :],  
+#     sigma_rtn=sigma_gps_position_rtn,
+#     epoch_idx=20,
+#     file_name="grace_fo_b_gps_noise_rtn_projections_epoch_20.png"
+# )
 
 # =====================================
 # ASD NOISE GENERATION 
@@ -232,9 +239,20 @@ Plotter.plot_pointing_angles_asd(
 )
 
 angles_noise_timeseries = dict()
-kbr_system_and_oscillator_noise_timeseries = dict()
 
-for satellite, seed in zip(["Grace-FO_A", "Grace-FO_B"], [1, 2]):
+white_noise_asd_values = {
+    "roll": 20e-6,
+    "pitch": 20e-6,
+    "yaw": 20e-6,
+}
+
+bias_noise_values = {
+    "roll": 2e-3,
+    "pitch": 2e-3,
+    "yaw": 2e-3,
+}
+
+for satellite, seed in zip(["Grace-FO_A", "Grace-FO_B"], [42, 43]):
     
    # Generate pointing angles noise time series for each satellite
 
@@ -245,40 +263,39 @@ for satellite, seed in zip(["Grace-FO_A", "Grace-FO_B"], [1, 2]):
         roll_history_json_path,
         time_data.shape[0],
         satellite_label=satellite,
-        seed=seed
+        seed=seed,
+        white_noise_asd_values=white_noise_asd_values,
+        bias_noise_values=bias_noise_values
     )
 
-   # Generate KBR system and oscillator noise time series for each satellite
+seed = 42
 
-    kbr_system_and_oscillator_noise_timeseries[satellite] = NoiseGenerator.generate_kbr_system_and_oscillator_noise(
-        plotter,
-        time_data.shape[0],
-        satellite_label=satellite,
-        seed=seed
-    )
+# Generate KBR system and oscillator noise time series for each satellite
+
+kbr_system_and_oscillator_noise_timeseries = NoiseGenerator.generate_kbr_system_and_oscillator_noise(
+   plotter,
+   time_data.shape[0],
+   seed=seed
+)
 
 # =====================================
 # KBR RANGE MEASUREMENT SIMULATION 
 # =====================================
 
+antenna_phase_center_offset_vector_sf = {       
+      "Grace-FO_A": np.array([1.4444, -170.0e-6, 448e-6]),  # [m]
+      "Grace-FO_B": np.array([1.4445, 54e-6, 230e-6]),  # [m]
+}
+
+bias_value = 2e-2  # KBR range bias in meters
+
 kbr_range_noise = NoiseGenerator.generate_kbr_range_noise(
     angles_noise_timeseries=angles_noise_timeseries,
-    grace_fo_position_data=grace_fo_position_data,
+    kbr_system_and_oscillator_noise_timeseries=kbr_system_and_oscillator_noise_timeseries,
+    position_data=grace_fo_position_data,
+    antenna_phase_center_offset_vector_sf=antenna_phase_center_offset_vector_sf,
+    bias_value=bias_value,
+    plotter=plotter,
     )
 
-# sigma_rho = 1e-6  # KBR range noise standard deviation in meters
-# num_epochs = states_array.shape[0]
-
-# kbr_range_noise = NoiseGenerator.generate_kbr_range_noise(
-#     num_epochs=num_epochs,
-#     sigma_rho=sigma_rho,
-#     seed=42)
-
-# Plotter.plot_kbr_range_noise_histogram_and_distribution(
-#     plotter,
-#     range_error_samples=kbr_range_noise[10, :],
-#     sigma_rho=sigma_rho,
-#     epoch_idx=10,
-#     file_name="kbr_range_noise_epoch_10.png",
-# )
 

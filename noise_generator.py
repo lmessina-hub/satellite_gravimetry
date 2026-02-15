@@ -59,6 +59,8 @@ class NoiseGenerator:
         num_epochs: int,
         satellite_label: str,
         seed: int,
+        white_noise_asd_values: dict[str, float],
+        bias_noise_values: dict[str, float],
         ) -> dict[str, types.TimeSeries]:
         """ Generate pointing angles noise based on ASD data from JSON files. """
 
@@ -82,7 +84,9 @@ class NoiseGenerator:
             interpolator = math.interpolators.create_one_dimensional_scalar_interpolator(data_to_interpolate, interpolator_settings)
 
             # Create a regular frequency span and interpolate ASD values
-            delta_f = 10**-8
+            time_step = 5.0  # seconds
+            num_samples = num_epochs 
+            delta_f = 1.0 / (num_samples * time_step)
             frequencies_uniform_span = np.arange(frequencies.min(), frequencies.max(), delta_f)
             asd_interpolated = np.array([interpolator.interpolate(freq) for freq in frequencies_uniform_span])
 
@@ -99,9 +103,8 @@ class NoiseGenerator:
             psd_interpolated = types.frequencyseries.FrequencySeries(asd_interpolated**2, delta_f)
 
             # Generate noise using the PSD, sample rate of 5 seconds for a time span of 31 days
-            time_step = 5.0  # seconds
-            num_samples = num_epochs 
             noise_time_series = noise.gaussian.noise_from_psd(num_samples, time_step, psd_interpolated, seed)
+
             angles_noise_time_series[file_prefix] = noise_time_series
 
             # Print noise time series and basic stats
@@ -112,8 +115,7 @@ class NoiseGenerator:
 
             # Estimate PSD of time series via Welch
 
-            segment_duration = 24 * 3600.0  # 1 day segments in seconds
-            segment_len = int(segment_duration / 5)
+            segment_len = int(num_samples / 31)
 
             # 50% overlap
             seg_stride = segment_len // 2
@@ -134,47 +136,71 @@ class NoiseGenerator:
                 input_psd_values,
                 file_name=f"{satellite_label}_{file_prefix}_pointing_angle_welch_estimated_psd_comparison.png",
             )
-        
+
+            # Create a flat ASD over frequency span
+            white_noise_asd = np.ones_like(frequencies_uniform_span) * white_noise_asd_values[file_prefix]
+
+            # Convert to PSD
+            white_noise_psd = types.frequencyseries.FrequencySeries(white_noise_asd**2, delta_f)
+
+            white_noise_time_series = noise.gaussian.noise_from_psd(
+                num_samples,
+                time_step,
+                white_noise_psd,
+                seed + 10  # shift seed to avoid correlation
+            )
+
+            # Add bias noise
+            bias_time_series = types.timeseries.TimeSeries(
+                    np.full(num_samples, bias_noise_values[file_prefix], dtype=float),
+                    delta_t=time_step
+                )
+            
+            plotter.plot_angle_noise_time_series(
+                noise_time_series + bias_time_series + white_noise_time_series,
+                file_name=f"{satellite_label}_{file_prefix}_total_pointing_angle_noise_time_series.png",
+            )
+            
         return angles_noise_time_series
     
     def generate_kbr_system_and_oscillator_noise(
         plotter: Plotter,
         num_epochs: int,
-        satellite_label: str,
         seed: int,
-        )-> dict[str, types.TimeSeries]:
+        )-> types.TimeSeries:
         """ Generate system and oscillator noise time series. """
 
-        # Create a regular frequency span 
-        delta_f = 10**-8
-        frequency_interval = [0.5e-5, 1.00006e-1]  # Hz
+        # Create a regular frequency span
+        time_step = 5.0  # seconds
+        delta_f = 1.0 / (num_epochs * time_step)
+        frequency_interval = [delta_f, 1e-1 + delta_f]  # Hz
         frequencies_uniform_span = np.arange(frequency_interval[0], frequency_interval[1], delta_f)
         analytical_asd = 1e-6 * np.sqrt(1 + (0.0018 / frequencies_uniform_span)**4)  # [m Hz^-1/2]
+        analytical_psd = (1e-6 * np.sqrt(1 + (0.0018 / frequencies_uniform_span)**4))**2  # [m^2 Hz^-1]
+
 
         # Plot original vs interpolated data
         plotter.plot_kbr_system_and_oscillator_asd(
             frequencies_uniform_span,
             analytical_asd,
-            file_name=f"{satellite_label}_kbr_system_and_oscillator_asd.png"
+            file_name=f"kbr_system_and_oscillator_asd.png"
         )
 
         # Convert ASD to PSD
-        analytical_psd = types.frequencyseries.FrequencySeries(analytical_asd**2, delta_f)
+        analytical_psd = types.frequencyseries.FrequencySeries(analytical_psd, delta_f)
 
         # Generate noise using the PSD, sample rate of 5 seconds for a time span of 31 days
-        time_step = 5.0  # seconds
         num_samples = num_epochs 
         noise_time_series = noise.gaussian.noise_from_psd(num_samples, time_step, analytical_psd, seed)
 
         # Print noise time series and basic stats
         plotter.plot_kbr_system_and_oscillator_noise_time_series(
             noise_time_series,
-            file_name=f"{satellite_label}_kbr_system_and_oscillator_noise_time_series.png",
+            file_name=f"kbr_system_and_oscillator_noise_time_series.png",
         )
 
         # Estimate PSD of time series via Welch
-        segment_duration = 48 * 3600.0  # 6 hr segments in seconds
-        segment_len = int(segment_duration / 5)
+        segment_len = int(num_samples // 3)
 
         # 50% overlap
         seg_stride = segment_len // 2
@@ -193,7 +219,7 @@ class NoiseGenerator:
             estimated_psd_values,
             input_frequencies,
             input_psd_values,
-            file_name=f"{satellite_label}_kbr_system_and_oscillator_welch_estimated_psd_comparison.png",
+            file_name=f"kbr_system_and_oscillator_welch_estimated_psd_comparison.png",
             ordinate_label=r"PSD [m$^2$ Hz$^{-1}$]",
             title="KBR System and Oscillator PSD"
         )
@@ -202,12 +228,37 @@ class NoiseGenerator:
     
     def generate_kbr_range_noise(
             angles_noise_timeseries: dict[str, types.TimeSeries],
+            kbr_system_and_oscillator_noise_timeseries: types.TimeSeries,
             position_data: List[np.ndarray],
-        ):
-        """ Generate KBR range measurement noise using pointing angles noise time series. """
+            antenna_phase_center_offset_vector_sf: dict[str, np.ndarray],
+            bias_value: float,
+            plotter: Plotter,
+        ) -> types.TimeSeries:
+        """ 
+        Generate KBR range measurement noise using pointing angles noise time series,
+        satellite position data, and systema and oscillator noise timeseries.
+        """
 
-        # Compute rotation matrices from SF to LOSF for both satellites
+        # ==================================================================
+        # ANTENNA PHASE CENTRE POINTING JITTER COUPLING NOISE GENERATION 
+        # ==================================================================
+
+        # Compute rotation matrices from SF to LOSF and from LOSF to J2000 for both satellites
         rot_matrices_sf_to_losf = dict()
+        rot_matrices_losf_to_j2000 = dict()
+        # Compute rotation matrices from SF to J2000 for both satellites
+        rot_matrices_sf_to_j2000 = dict()
+        los_vectors_j2000 = dict()
+
+        # Antenna phase center pointing jitter coupling noise
+        apc_pointing_jitter_coupling_noise = dict()
+
+        position_data = {
+            "Grace-FO_A": position_data[0],
+            "Grace-FO_B": position_data[1],
+        }
+
+        num_epochs = len(kbr_system_and_oscillator_noise_timeseries)
 
         for satellite in ["Grace-FO_A", "Grace-FO_B"]:
 
@@ -220,47 +271,52 @@ class NoiseGenerator:
             rot_sf_to_losf = rot_losf_to_sf.inv()
             rot_matrices_sf_to_losf[satellite] = rot_sf_to_losf.as_matrix()
 
-        # Compute J2000 to LOSF matrices for both satellites
-        x_losf_a = position_data[1] - position_data[0] / np.linalg.norm(position_data[1] \
-                                                                      - position_data[0], axis=-1, keepdims=True)
-        y_losf_a = np.cross(x_losf_a, position_data[0]) / np.linalg.norm(np.cross(x_losf_a, position_data[0]),\
-                                                                          axis=-1, keepdims=True)
+            primary_position = position_data[satellite]
+            secondary_position = position_data["Grace-FO_B" if satellite == "Grace-FO_A" else "Grace-FO_A"]
+
+            # Compute J2000 to LOSF matrices for both satellites
+            x_losf = (secondary_position - primary_position) / np.linalg.norm(secondary_position \
+                                                                              - primary_position, axis=-1, keepdims=True)
+            
+            los_vectors_j2000[satellite] = x_losf
+            
+            y_losf = np.cross(x_losf, primary_position) / np.linalg.norm(np.cross(x_losf, primary_position), axis=-1, keepdims=True)
+            
+            z_losf = np.cross(x_losf, y_losf) / np.linalg.norm(np.cross(x_losf, y_losf), axis=-1, keepdims=True)
+            rot_matrices_losf_to_j2000[satellite] = np.stack([x_losf, y_losf, z_losf], axis=-1)
+
+            rot_matrices_sf_to_j2000[satellite] = rot_matrices_losf_to_j2000[satellite] @ rot_matrices_sf_to_losf[satellite]
+
+            antenna_phase_center_offset_vector_j2000 = np.einsum("nij,j->ni", rot_matrices_sf_to_j2000[satellite],\
+                                                                  antenna_phase_center_offset_vector_sf[satellite])
+            
+            apc_pointing_jitter_coupling_noise[satellite] = - np.einsum("ni,ni->n", los_vectors_j2000[satellite],\
+                                                                        antenna_phase_center_offset_vector_j2000)
+            
+            plotter.plot_apc_pointing_jitter_coupling_time_series_demeaned(
+                apc_pointing_jitter_coupling_noise=apc_pointing_jitter_coupling_noise,
+                time_seconds=np.asarray(kbr_system_and_oscillator_noise_timeseries.sample_times, dtype=float),
+                satellite_label=satellite,
+                file_name=f"{satellite}_apc_pointing_jitter_coupling_noise_demeaned.png",
+            )
+
+        # =========================
+        # TOTAL KBR RANGE NOISE 
+        # =========================   
+
+        bias = 0.0 * kbr_system_and_oscillator_noise_timeseries + bias_value
+
+        # Final length checks
+        if len(apc_pointing_jitter_coupling_noise["Grace-FO_A"]) != num_epochs\
+              or len(apc_pointing_jitter_coupling_noise["Grace-FO_B"]) != num_epochs\
+                or len(bias) != num_epochs:
+            raise ValueError(
+                f"TimeSeries length mismatch."
+            )
+
+        total_kbr_range_noise = (apc_pointing_jitter_coupling_noise["Grace-FO_A"] + \
+                                apc_pointing_jitter_coupling_noise["Grace-FO_B"] + \
+                                bias + \
+                                np.asarray(kbr_system_and_oscillator_noise_timeseries, dtype=float))
         
-        z_losf_a = np.cross(x_losf_a, y_losf_a) / np.linalg.norm(np.cross(x_losf_a, y_losf_a), axis=-1, keepdims=True)
-        rot_matrices_losf_a_to_j2000 = np.stack([x_losf_a, y_losf_a, z_losf_a], axis=-1)
-
-        x_losf_b = position_data[0] - position_data[1] / np.linalg.norm(position_data[0] \
-                                                                      - position_data[1], axis=-1, keepdims=True)
-        y_losf_b = np.cross(x_losf_b, position_data[1]) / np.linalg.norm(np.cross(x_losf_b, position_data[1]),\
-                                                                          axis=-1, keepdims=True)
-        
-        z_losf_b = np.cross(x_losf_b, y_losf_b) / np.linalg.norm(np.cross(x_losf_b, y_losf_b), axis=-1, keepdims=True)
-        rot_matrices_losf_b_to_j2000 = np.stack([x_losf_b, y_losf_b, z_losf_b], axis=-1)
-
-
-
-    # def generate_kbr_range_noise(
-    #     num_epochs: int,
-    #     sigma_rho: float,        
-    #     seed: int,
-    # ) -> tuple[np.ndarray]:
-    #     """ Generate KBR range measurement noise using Sobol sequences and Gaussian distribution. """
-
-    #     exponent_num_samples = 10
-    #     eps = np.finfo(np.float64).eps
-    #     range_error  = np.empty((num_epochs, 2**exponent_num_samples))                  
-
-    #     for k in range(num_epochs):
-
-    #         sampler = qmc.Sobol(d=1, scramble=True, rng=seed)
-    #         sobol_samples = sampler.random_base2(m=exponent_num_samples)               
-    #         sobol_samples = np.clip(sobol_samples, eps, 1.0 - eps)
-    #         normal_distribution_samples = norm.ppf(sobol_samples).reshape(-1)               
-
-    #         range_error_samples = normal_distribution_samples * sigma_rho                           
-    #         range_error[k, :]  = range_error_samples
-
-    #     return range_error
-
-        
-
+        return total_kbr_range_noise
