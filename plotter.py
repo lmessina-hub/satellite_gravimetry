@@ -71,10 +71,12 @@ class Plotter:
 
         for i in range(no_satellites):
             if i == 0:
-                reference_color =  "#073AA0"
+                reference_color =  "#5307A0"
+                point_color =  "#23822F"
             else:
-                reference_color = cmap(i)
-            point_color = self._mix_with_white(reference_color, amount=0.35)  # lighter
+                reference_color =  "#22CE9D"
+                point_color = "#0742A0"
+                
             ax.plot(position_data[i][:, 0], position_data[i][:, 1], position_data[i][:, 2], label=sat_labels[i],
                      linewidth=linewidth[i % len(linewidth)], color=reference_color, linestyle=linestyles[i % len(linestyles)])
             ax.scatter(
@@ -99,20 +101,6 @@ class Plotter:
 
         plt.tight_layout()
         plt.savefig(self.output_path / file_name, dpi = 720)
-
-    @staticmethod
-    def _mix_with_white(color, amount=0.5):
-        """If the amount=0 it yields original color, whilst it the amount=1 
-        the method returns white."""
-        rgb = np.array(mcolors.to_rgb(color))
-        return tuple((1 - amount) * rgb + amount * np.ones(3))
-
-    @staticmethod
-    def _mix_with_black(color, amount=0.3):
-        """If the amount=0 it yields original color, whilst it the amount=1 
-        the method returns black."""
-        rgb = np.array(mcolors.to_rgb(color))
-        return tuple((1 - amount) * rgb)
     
     @staticmethod
     def _set_equal_3d_axes(ax, data: np.ndarray) -> None:
@@ -136,7 +124,7 @@ class Plotter:
         Add an Earth sphere centered at the origin.
         """
         # Sphere parameterization
-        n_lon, n_lat = 720, 360  # increase for smoother sphere, decrease for speed
+        n_lon, n_lat = 720, 720  # increase for smoother sphere, decrease for speed
         lon = np.linspace(-np.pi, np.pi, n_lon)
         lat = np.linspace(-np.pi / 2, np.pi / 2, n_lat)
         lon2, lat2 = np.meshgrid(lon, lat)
@@ -196,11 +184,11 @@ class Plotter:
         cross_track_distance = np.einsum("ij,ij->i", relative_position, h_hat) / 1e3 # [km]
         relative_position_norm = np.linalg.norm(relative_position, axis=1) / 1e3     # [km]
 
-        plt.figure(figsize=(7, 4.5), dpi=140)
+        plt.figure(figsize=(7, 4.5), dpi=360)
         plt.plot(t_days, along_track_distance, linewidth=2.5, label="Along-track (T)", color="tab:blue")
         plt.plot(t_days, radial_distance, linewidth=2.5, linestyle="--", label="Radial (R)", color="tab:orange")
         plt.plot(t_days, cross_track_distance, linewidth=2.8, linestyle=":", label="Cross-track (N)", color="tab:green")
-        plt.plot(t_days, relative_position_norm, linewidth=2.5, linestyle="-.", label=r"Range ($\rho$)", color="tab:red")
+        plt.plot(t_days, relative_position_norm, linewidth=1.5, linestyle="-.", label=r"Range ($\rho$)", color="tab:red")
 
         plt.title(title)
         plt.xlabel("Propagation time [days]")
@@ -629,3 +617,128 @@ class Plotter:
 
         fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
         plt.close(fig)
+
+
+    def plot_srp_acceleration_time_series(
+        self,
+        dependent_variables_array: np.ndarray,
+        norm_title: str = "SRP acceleration norm time evolution — GRACE-FO",
+        components_title_prefix: str = "SRP acceleration component",
+    ) -> None:
+        """
+        Plot SRP acceleration norm time evolution for GRACE-FO A and GRACE-FO B,
+        and additionally create 3 separate figures for the SRP acceleration components
+        (x, y, z) for both satellites.
+        """
+
+        if dependent_variables_array.ndim != 2 or dependent_variables_array.shape[1] < 9:
+            raise ValueError(
+                "dependent_variables_array must be 2D with at least 9 columns: "
+            )
+
+        time_seconds = dependent_variables_array[:4320, 0]
+        time_days = (time_seconds - time_seconds[0]) / 86400.0
+
+        srp_acc_norm_grace_fo_a = dependent_variables_array[:4320, 1]
+        srp_acc_norm_grace_fo_b = dependent_variables_array[:4320, 2]
+
+        norm_file_name = "grace_fo_srp_acc_norm_time_evolution.png"
+
+        fig = plt.figure(figsize=(9.0, 5.0), dpi=300)
+        ax = fig.add_subplot(111)
+        ax.plot(time_days, srp_acc_norm_grace_fo_a, color="#5307A0", linewidth=2.5, label="GRACE-FO A")
+        ax.plot(time_days, srp_acc_norm_grace_fo_b, color="#22CE9D", linewidth=2.5, linestyle="--", label="GRACE-FO B")
+        ax.set_title(norm_title)
+        ax.set_xlabel("Propagation time [days]")
+        ax.set_ylabel(r"$\|a_{\mathrm{SRP}}\|$ [m/s$^2$]")
+        ax.grid(True)
+        ax.legend(loc="best")
+        fig.tight_layout()
+        fig.savefig(self.output_path / norm_file_name, bbox_inches="tight")
+        plt.close(fig)
+
+        srp_acc_grace_fo_a = dependent_variables_array[:4320, 3:6]  # [ax, ay, az]
+        srp_acc_grace_fo_b = dependent_variables_array[:4320, 6:9]  # [ax, ay, az]
+
+        comp_labels = ["x", "y", "z"]
+        for j, comp in enumerate(comp_labels):
+            fig = plt.figure(figsize=(9.0, 5.0), dpi=300)
+            ax = fig.add_subplot(111)
+
+            ax.plot(time_days, srp_acc_grace_fo_a[:, j], color="#5307A0", linewidth=2.5, label="GRACE-FO A")
+            ax.plot(time_days, srp_acc_grace_fo_b[:, j], color="#22CE9D", linewidth=2.5, linestyle="--", label="GRACE-FO B")
+
+            ax.set_title(f"{components_title_prefix} {comp} time evolution — GRACE-FO")
+            ax.set_xlabel("Propagation time [days]")
+            ax.set_ylabel(rf"$a_{{\mathrm{{SRP}},{comp}}}$ [m/s$^2$]")
+            ax.grid(True)
+            ax.legend(loc="best")
+
+            fig.tight_layout()
+
+            component_file_name = f"grace_fo_srp_acc_comp__{comp}_time_evolution.png"
+
+            fig.savefig(self.output_path / component_file_name, bbox_inches="tight")
+            plt.close(fig)
+
+
+    def plot_aerodynamic_acceleration_time_series(
+        self,
+        dependent_variables_array: np.ndarray,
+        norm_title: str = "Aerodynamic acceleration norm time evolution — GRACE-FO",
+        components_title_prefix: str = "Aerodynamic acceleration component",
+    ) -> None:
+        """
+        Plot aerodynamic acceleration norm time evolution for GRACE-FO A and GRACE-FO B,
+        and additionally create 3 separate figures for the aerodynamic acceleration components
+        (x, y, z) for both satellites.
+        """
+
+        if dependent_variables_array.ndim != 2 or dependent_variables_array.shape[1] < 17:
+            raise ValueError(
+                "dependent_variables_array must be 2D with at least 17 columns: "
+            )
+
+        time_seconds = dependent_variables_array[:4320, 0]
+        time_days = (time_seconds - time_seconds[0]) / 86400.0
+
+        aero_acc_norm_grace_fo_a = dependent_variables_array[:4320, 9]
+        aero_acc_norm_grace_fo_b = dependent_variables_array[:4320, 10]
+
+        norm_file_name = "grace_fo_aero_acc_norm_time_evolution.png"
+
+        fig = plt.figure(figsize=(9.0, 5.0), dpi=300)
+        ax = fig.add_subplot(111)
+        ax.plot(time_days, aero_acc_norm_grace_fo_a, color="#5307A0", linewidth=2.5, label="GRACE-FO A")
+        ax.plot(time_days, aero_acc_norm_grace_fo_b, color="#22CE9D", linewidth=2.5, linestyle="--", label="GRACE-FO B")
+        ax.set_title(norm_title)
+        ax.set_xlabel("Propagation time [days]")
+        ax.set_ylabel(r"$\|a_{\mathrm{aero}}\|$ [m/s$^2$]")
+        ax.grid(True)
+        ax.legend(loc="best")
+        fig.tight_layout()
+        fig.savefig(self.output_path / norm_file_name, bbox_inches="tight")
+        plt.close(fig)
+
+        aero_acc_grace_fo_a = dependent_variables_array[:4320, 11:14]  # [ax, ay, az]
+        aero_acc_grace_fo_b = dependent_variables_array[:4320, 14:17]  # [ax, ay, az]
+
+        comp_labels = ["x", "y", "z"]
+        for j, comp in enumerate(comp_labels):
+            fig = plt.figure(figsize=(9.0, 5.0), dpi=300)
+            ax = fig.add_subplot(111)
+
+            ax.plot(time_days, aero_acc_grace_fo_a[:, j], color="#5307A0", linewidth=2.5, label="GRACE-FO A")
+            ax.plot(time_days, aero_acc_grace_fo_b[:, j], color="#22CE9D", linewidth=2.5, linestyle="--", label="GRACE-FO B")
+
+            ax.set_title(f"{components_title_prefix} {comp} time evolution — GRACE-FO")
+            ax.set_xlabel("Propagation time [days]")
+            ax.set_ylabel(rf"$a_{{\mathrm{{aero}},{comp}}}$ [m/s$^2$]")
+            ax.grid(True)
+            ax.legend(loc="best")
+
+            fig.tight_layout()
+
+            component_file_name = f"grace_fo_aero_acc_comp__{comp}_time_evolution.png"
+            fig.savefig(self.output_path / component_file_name, bbox_inches="tight")
+            plt.close(fig)

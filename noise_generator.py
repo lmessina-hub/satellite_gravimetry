@@ -66,7 +66,8 @@ class NoiseGenerator:
 
         json_paths =[pitch_history_json_path, yaw_history_json_path, roll_history_json_path]
         file_prefixes = ['pitch', 'yaw', 'roll']
-        angles_noise_time_series = {}
+        error_free_pointing_angles_time_series = {}
+        noisy_attitude_time_series = {}
 
         # Load the ASD data from the uploaded JSON file
         for path, file_prefix in zip(json_paths, file_prefixes):
@@ -105,7 +106,7 @@ class NoiseGenerator:
             # Generate noise using the PSD, sample rate of 5 seconds for a time span of 31 days
             noise_time_series = noise.gaussian.noise_from_psd(num_samples, time_step, psd_interpolated, seed)
 
-            angles_noise_time_series[file_prefix] = noise_time_series
+            error_free_pointing_angles_time_series[file_prefix] = noise_time_series
 
             # Print noise time series and basic stats
             plotter.plot_angle_noise_time_series(
@@ -156,12 +157,16 @@ class NoiseGenerator:
                     delta_t=time_step
                 )
             
+            
+            
             plotter.plot_angle_noise_time_series(
                 noise_time_series + bias_time_series + white_noise_time_series,
                 file_name=f"{satellite_label}_{file_prefix}_total_pointing_angle_noise_time_series.png",
             )
             
-        return angles_noise_time_series
+            noisy_attitude_time_series[file_prefix] = noise_time_series + bias_time_series + white_noise_time_series
+            
+        return error_free_pointing_angles_time_series, noisy_attitude_time_series
     
     def generate_kbr_system_and_oscillator_noise(
         plotter: Plotter,
@@ -274,7 +279,7 @@ class NoiseGenerator:
             primary_position = position_data[satellite]
             secondary_position = position_data["Grace-FO_B" if satellite == "Grace-FO_A" else "Grace-FO_A"]
 
-            # Compute J2000 to LOSF matrices for both satellites
+            # Compute LOSF to J2000 matrices for both satellites
             x_losf = (secondary_position - primary_position) / np.linalg.norm(secondary_position \
                                                                               - primary_position, axis=-1, keepdims=True)
             
