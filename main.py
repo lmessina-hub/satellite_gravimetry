@@ -27,7 +27,7 @@ from tudatpy.dynamics.propagation_setup import dependent_variable
 
 
 simulation_start_epoch = DateTime(2005, 3, 1, 0, 0, 0).to_epoch()
-simulation_end_epoch = DateTime(2005, 3, 2, 0, 0, 0).to_epoch() 
+simulation_end_epoch = DateTime(2005, 4, 1, 0, 0, 0).to_epoch() 
 time_step = 5.0  # seconds
 number_epochs = int(np.floor((simulation_end_epoch - simulation_start_epoch) / time_step)) + 1
 
@@ -61,7 +61,7 @@ white_noise_asd_values = {
 
 bias_noise_values = {
     "roll": 2e-3,
-    "pitch": 2e-3,
+    "pitch": -2e-3,
     "yaw": 2e-3,
 }
 
@@ -209,24 +209,34 @@ body_settings.get("Grace-FO B").rotation_model_settings = dynamics.environment_s
 
 # Loading the macromodel
 grace_fo_material_properties = {
-    "SiOx_Kapton": dynamics.environment_setup.vehicle_systems.material_properties(
-        specular_reflectivity=0.40,
-        diffuse_reflectivity=0.26,
+    "SiOx_Kapton_Front_Rear": dynamics.environment_setup.vehicle_systems.material_properties(
+        specular_reflectivity=0.71,
+        diffuse_reflectivity=0.15,
     ),
-    "Si_Glass": dynamics.environment_setup.vehicle_systems.material_properties(
-        specular_reflectivity=0.03,
-        diffuse_reflectivity=0.07,
+    "SiOx_Kapton_Apron": dynamics.environment_setup.vehicle_systems.material_properties(
+        specular_reflectivity=0.16,
+        diffuse_reflectivity=0.79,
     ),
-    "Teflon": dynamics.environment_setup.vehicle_systems.material_properties(
-        specular_reflectivity=0.68,
-        diffuse_reflectivity=0.20,
+    "Si_Glass_Solar_Arrays": dynamics.environment_setup.vehicle_systems.material_properties(
+        specular_reflectivity=0.0,
+        diffuse_reflectivity=0.10,
+    ),
+    "Si_Glass_Zenith": dynamics.environment_setup.vehicle_systems.material_properties(
+        specular_reflectivity=0.12,
+        diffuse_reflectivity=0.0,
+    ),
+    "Teflon_Nadir": dynamics.environment_setup.vehicle_systems.material_properties(
+        specular_reflectivity=0.95,
+        diffuse_reflectivity=0.05,
     ),
     }   
 
 grace_fo_reradiation_settings = {
-    "SiOx_Kapton": True,
-    "Si_Glass": True,
-    "Teflon": True,
+    "SiOx_Kapton_Front_Rear": True,
+    "SiOx_Kapton_Apron": True,
+    "Si_Glass_Solar_Arrays": True,
+    "Si_Glass_Zenith": True,
+    "Teflon_Nadir": True,
 }
 
 grace_fo_frame_origin = np.array([0.0, 0.0, 0.0])  # [m], origin of the spacecraft bus frame in the SF frame
@@ -369,6 +379,7 @@ acceleration_settings_grace_fo = dict(
    Neptune=[dynamics.propagation_setup.acceleration.point_mass_gravity()],
    Ceres=[dynamics.propagation_setup.acceleration.point_mass_gravity()],
    Vesta=[dynamics.propagation_setup.acceleration.point_mass_gravity()],
+   Pluto=[dynamics.propagation_setup.acceleration.point_mass_gravity()],
 )
 
 acceleration_settings = {"Grace-FO A": acceleration_settings_grace_fo, "Grace-FO B": acceleration_settings_grace_fo}
@@ -470,6 +481,8 @@ dependent_variables_to_save = [
     dependent_variable.single_acceleration(
         dynamics.propagation_setup.acceleration.aerodynamic_type, "Grace-FO B", "Earth"
     ),
+    dependent_variable.inertial_to_body_fixed_rotation_frame("Grace-FO A"),
+    dependent_variable.inertial_to_body_fixed_rotation_frame("Grace-FO B"),
     ]
 
 # Create propagation settings
@@ -545,6 +558,14 @@ plotter.plot_aerodynamic_acceleration_time_series(
     dependent_variables_array=dependent_variables_array,
 )
 
+plotter.plot_attitude_triads_orientation(
+    dependent_variables_array=dependent_variables_array,
+    grace_fo_position_data=grace_fo_position_data,
+    epoch_idx=5000,
+    file_name="grace_fo_attitude_triads_epoch_5000.png"
+)
+
+
 # =====================================
 # GPS POSITION MEASUREMENT SIMULATION 
 # =====================================
@@ -591,8 +612,8 @@ kbr_system_and_oscillator_noise_timeseries = NoiseGenerator.generate_kbr_system_
 )
 
 antenna_phase_center_offset_vector_sf = {       
-      "Grace-FO_A": np.array([1.4444, -170.0e-6, 448e-6]),  # [m]
-      "Grace-FO_B": np.array([1.4445, 54e-6, 230e-6]),  # [m]
+      "Grace-FO_A": np.array([1.4437, -370.6e-6, 145e-6]),  # [m]
+      "Grace-FO_B": np.array([1.4817, 183e-6, 1393.1e-6]),  # [m]
 }
 
 bias_value = 2e-2  # KBR range bias in meters

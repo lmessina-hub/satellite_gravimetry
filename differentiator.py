@@ -11,7 +11,7 @@ def compute_acceleration(
 
     :param position: Array of position vectors at different time steps (shape: (N, 3)).
     :param time_: Array of time values corresponding to the position measurements (shape: (N,)).
-    :param accuracy: Order of accuracy for the finite difference approximation (2, 4, or 6).
+    :param accuracy: Order of accuracy for the finite difference approximation (2, 4, 6 ...).
     :return: Array of acceleration vectors (shape: (N, 3)).
     """
 

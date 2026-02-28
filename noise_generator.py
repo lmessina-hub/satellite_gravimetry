@@ -87,7 +87,7 @@ class NoiseGenerator:
             # Create a regular frequency span and interpolate ASD values
             time_step = 5.0  # seconds
             num_samples = num_epochs 
-            delta_f = 1.0 / (num_samples * time_step)
+            delta_f = min(1.0 / (num_samples * time_step), 1e-8)
             frequencies_uniform_span = np.arange(frequencies.min(), frequencies.max(), delta_f)
             asd_interpolated = np.array([interpolator.interpolate(freq) for freq in frequencies_uniform_span])
 
@@ -158,7 +158,6 @@ class NoiseGenerator:
                 )
             
             
-            
             plotter.plot_angle_noise_time_series(
                 noise_time_series + bias_time_series + white_noise_time_series,
                 file_name=f"{satellite_label}_{file_prefix}_total_pointing_angle_noise_time_series.png",
@@ -226,7 +225,8 @@ class NoiseGenerator:
             input_psd_values,
             file_name=f"kbr_system_and_oscillator_welch_estimated_psd_comparison.png",
             ordinate_label=r"PSD [m$^2$ Hz$^{-1}$]",
-            title="KBR System and Oscillator PSD"
+            title="KBR System and Oscillator PSD",
+            x_limits=(0.8e-5, 1e-1)
         )
         
         return noise_time_series

@@ -1,5 +1,5 @@
 # NOTE: Load warning module and filter out specific deprecation warnings
-# to avoid cluttering log outpuyt with irrelevant messages.
+# to avoid cluttering log output with irrelevant messages.
 import warnings
 warnings.filterwarnings(
     "ignore",
@@ -231,7 +231,7 @@ def validate_los_inter_satellite_acceleration(
 
 ###################################################################
 #
-#                   DOUBLE DIFFERENTIATION TESTING
+#                   FINITE DIFFERENTIATION TESTING
 #
 ###################################################################
 

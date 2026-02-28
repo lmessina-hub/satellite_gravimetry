@@ -1,14 +1,16 @@
 import numpy as np
-import matplotlib.colors as mcolors
 import json
 
 
 from pathlib import Path
+from matplotlib.lines import Line2D
+from matplotlib.ticker import ScalarFormatter
 
 import matplotlib as mpl
 mpl.use("Agg") 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+
 
 def apply_publication_style():
     mpl.rcParams.update({
@@ -101,6 +103,137 @@ class Plotter:
 
         plt.tight_layout()
         plt.savefig(self.output_path / file_name, dpi = 720)
+
+    def plot_attitude_triads_orientation(
+        self,
+        dependent_variables_array: np.ndarray,
+        grace_fo_position_data: list[np.ndarray],
+        epoch_idx: int,
+        file_name: str,
+    ) -> None:
+        """
+        Plot GRACE-FO A/B body-frame attitude triads at a selected epoch.
+
+        The view is centered at the midpoint between both satellites and uses
+        a plotting box to keep all axes equally scaled.
+        """
+
+
+        dependent_variables_array = np.asarray(dependent_variables_array, dtype=float)
+        if dependent_variables_array.ndim != 2:
+            raise ValueError("dependent_variables_array must be a 2D array.")
+        if dependent_variables_array.shape[1] < 35:
+            raise ValueError(
+                "dependent_variables_array must include rotation matrices for both satellites "
+            )
+        if epoch_idx < 0 or epoch_idx >= dependent_variables_array.shape[0]:
+            raise IndexError(
+                f"epoch_idx={epoch_idx} is out of bounds for dependent_variables_array "
+                f"with {dependent_variables_array.shape[0]} rows."
+            )
+
+        if len(grace_fo_position_data) != 2:
+            raise ValueError("grace_fo_position_data must contain two arrays: GRACE-FO A and GRACE-FO B.")
+
+        grace_fo_a_position_history = np.asarray(grace_fo_position_data[0], dtype=float)
+        grace_fo_b_position_history = np.asarray(grace_fo_position_data[1], dtype=float)
+        if grace_fo_a_position_history.ndim != 2 or grace_fo_b_position_history.ndim != 2:
+            raise ValueError("Satellite position arrays must be 2D with shape (N, 3).")
+        if grace_fo_a_position_history.shape[1] != 3 or grace_fo_b_position_history.shape[1] != 3:
+            raise ValueError("Satellite position arrays must have 3 columns (x, y, z).")
+        if epoch_idx >= grace_fo_a_position_history.shape[0] or epoch_idx >= grace_fo_b_position_history.shape[0]:
+            raise IndexError(
+                f"epoch_idx={epoch_idx} is out of bounds for provided position history lengths "
+            )
+
+        grace_fo_a_position = grace_fo_a_position_history[epoch_idx]
+        grace_fo_b_position = grace_fo_b_position_history[epoch_idx]
+
+        rotation_inertial_to_body_grace_fo_a = dependent_variables_array[epoch_idx, 17:26].reshape(3, 3)
+        rotation_inertial_to_body_grace_fo_b = dependent_variables_array[epoch_idx, 26:35].reshape(3, 3)
+        rotation_body_to_inertial_grace_fo_a = rotation_inertial_to_body_grace_fo_a.T
+        rotation_body_to_inertial_grace_fo_b = rotation_inertial_to_body_grace_fo_b.T
+
+        midpoint = 0.5 * (grace_fo_a_position + grace_fo_b_position)
+        separation = np.linalg.norm(grace_fo_b_position - grace_fo_a_position)
+        # Set triad scale and plotting box size based on satellite separation to ensure good visibility and equal axis scaling
+        triad_scale = max(1.0, 0.2 * separation)
+        box_half_extent = 0.5 * separation + 2.0 * triad_scale
+
+        fig = plt.figure(figsize=(6,5), dpi=300)
+        ax = fig.add_subplot(111, projection="3d", proj_type="ortho")
+
+        colors = ("#FF6666", "#005533", "#1199EE")
+        labels = (r"$X_{SF}$", r"$Y_{SF}$", r"$Z_{SF}$")
+
+        def _plot_triad(center: np.ndarray, rotation_body_to_inertial: np.ndarray, name: str) -> None:
+            for i, (label, color) in enumerate(zip(labels, colors)):
+                axis_direction = rotation_body_to_inertial[:, i]
+                line_start = center
+                line_end = center + triad_scale * axis_direction
+                ax.plot(
+                    [line_start[0], line_end[0]],
+                    [line_start[1], line_end[1]],
+                    [line_start[2], line_end[2]],
+                    color=color,
+                    linewidth=2.0,
+                )
+                text_point = center + 1.8 * triad_scale * axis_direction
+                ax.text(*text_point, label, color=color, va="center", ha="center")
+
+            ax.text(
+                *center,
+                name,
+                color="k",
+                va="center",
+                ha="center",
+                fontsize = 9,
+                bbox={"fc": "w", "alpha": 0.8, "boxstyle": "circle,pad=0.25"},
+            )
+
+        _plot_triad(grace_fo_a_position, rotation_body_to_inertial_grace_fo_a, "A")
+        _plot_triad(grace_fo_b_position, rotation_body_to_inertial_grace_fo_b, "B")
+
+        legend_handles = [
+            Line2D([0], [0], marker="o", linestyle="None", color="k",
+                markersize=6, label="A: GRACE-FO A"),
+            Line2D([0], [0], marker="o", linestyle="None", color="k",
+                markersize=6, label="B: GRACE-FO B"),
+        ]
+
+        ax.legend(
+            handles=legend_handles,
+            loc="upper left",          # similar placement to your annotation
+            frameon=True,
+            borderaxespad=0.5,
+            fontsize=8,
+        )
+
+        ax.set_xlim(midpoint[0] - box_half_extent, midpoint[0] + box_half_extent)
+        ax.set_ylim(midpoint[1] - box_half_extent, midpoint[1] + box_half_extent)
+        ax.set_zlim(midpoint[2] - box_half_extent, midpoint[2] + box_half_extent)
+        ax.tick_params(axis="both", which="major", labelsize=8)
+        ax.tick_params(axis="z", which="major", labelsize=8)
+        ax.set_box_aspect([1.0, 1.0, 1.0])
+
+        ax.set_xlabel("x [m]", fontsize=8)
+        ax.set_ylabel("y [m]", fontsize=8)
+        ax.set_zlabel("z [m]", fontsize=8)
+        ax.set_title(f"GRACE-FO attitude triads - epoch index {epoch_idx}", fontsize=10)
+
+        for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+            formatter = ScalarFormatter(useMathText=True)
+            formatter.set_scientific(True)
+            formatter.set_powerlimits((0, 0))   # always use scientific notation
+            axis.set_major_formatter(formatter)
+
+        ax.xaxis.get_offset_text().set_fontsize(9)
+        ax.yaxis.get_offset_text().set_fontsize(9)
+        ax.zaxis.get_offset_text().set_fontsize(9)
+
+        fig.subplots_adjust(left=0.06, right=0.84, bottom=0.08, top=0.90)
+        fig.savefig(self.output_path / file_name, bbox_inches="tight", pad_inches=0.35)
+        plt.close(fig)
     
     @staticmethod
     def _set_equal_3d_axes(ax, data: np.ndarray) -> None:
@@ -290,19 +423,26 @@ class Plotter:
         ]
 
         for j in range(3):
-            fig = plt.figure(figsize=(8.5, 4.8), dpi=160)
+            fig = plt.figure(figsize=(8.5, 5), dpi=160)
             ax = fig.add_subplot(111)
 
             for accuracy in sorted(results.keys()):
                 error_vector = np.asarray(results[accuracy]["error_vector"], dtype=float)
                 
+                linestyle = "-o"
+                markevery = 1
+                if accuracy in (8, 12, 14):
+                    linestyle = "--o"
+                    markevery = 40
+
                 ax.plot(
                     propagation_time,
                     np.abs(error_vector[:, j]),
-                    "-o",
+                    linestyle,
                     markersize=2.5,
                     linewidth=1.5,
                     label=rf"$p={accuracy}$",
+                    markevery=markevery,
                 )
 
             ax.set_title(rf"{scenario} — {comp_titles[j]}", pad=14)
@@ -314,7 +454,7 @@ class Plotter:
             self._style_axes(ax)
             ax.legend(
                 loc="upper center",
-                bbox_to_anchor=(0.5, -0.22),   # below x-axis
+                bbox_to_anchor=(0.5, -0.20),   # below x-axis
                 ncol=min(5, len(results)),     # one row (up to 5 columns; adjust if needed)
                 frameon=True,
                 fontsize=10,
@@ -337,12 +477,20 @@ class Plotter:
             error_norm = np.asarray(results[accuracy]["error_norm"], dtype=float).reshape(-1)
 
             rms = float(results[accuracy]["error_rms"])
+
+            linestyle = "-o"
+            linewidth = 1.5
+            if accuracy in (12, 14):
+                linestyle = "--"
+                linewidth = 2.5
+
+
             ax.plot(
                 propagation_time,
                 error_norm,
-                "-o",
-                markersize=2.2,
-                linewidth=1.2,
+                linestyle,
+                markersize=2.5,
+                linewidth=linewidth,
                 label=rf"$p={accuracy}\;(\mathrm{{RMS}}={rms:.3e}\,\mathrm{{m\,s^{{-2}}}})$",
             )
 
@@ -396,12 +544,20 @@ class Plotter:
             absolute_error = np.asarray(results[accuracy]["absolute_error"], dtype=float).reshape(-1)
             error_rms = float(results[accuracy]["error_rms"])
 
+            linestyle = "-o"
+            linewidth = 1.5
+            if accuracy == 18:
+                linestyle = "--"
+                linewidth = 2.5
+            if accuracy in (4, 6, 8, 10, 12):
+                linestyle = "--o"
+
             ax.plot(
                 propagation_time,
                 absolute_error,
-                "-o",
+                linestyle,
                 markersize=2.2,
-                linewidth=1.2,
+                linewidth=linewidth,
                 label=rf"$p={accuracy}\;(\mathrm{{RMS}}={error_rms:.3e}\,\mathrm{{m\,s^{{-2}}}})$",
             )
 
@@ -429,12 +585,15 @@ class Plotter:
 
     def _style_axes(self, ax: plt.Axes) -> None:
         ax.minorticks_on()
-        ax.grid(False, which="minor")
         ax.spines["left"].set_linewidth(1.2)
         ax.spines["bottom"].set_linewidth(1.2)
         ax.spines["top"].set_linewidth(1.2)
         ax.spines["right"].set_linewidth(1.2)
         ax.set_axisbelow(True)
+        # Major grid (light but visible)
+        ax.grid(True, which="major", linestyle="-", linewidth=0.8, alpha=0.6)
+        # Minor grid (very subtle)
+        ax.grid(True, which="minor", linestyle="-", linewidth=0.7, alpha=0.45)
 
     def plot_pointing_angles_asd(
         self,
@@ -519,14 +678,15 @@ class Plotter:
         input_psd_values: np.ndarray,
         file_name: str,
         ordinate_label: str = r"PSD [rad$^2$ Hz$^{-1}$]",
-        title: str = "Pointing Angle PSD"
+        title: str = "Pointing Angle PSD",
+        x_limits: tuple[float, float] | None = None
     ) -> None:
         """Plot comparison between Welch estimated PSD and input PSD."""
 
         fig = plt.figure(figsize=(10, 6))
 
-        plt.loglog(estimated_frequencies, estimated_psd_values, color="#D8660E", label='Welch Estimated PSD', linewidth=1.8, linestyle='--')
-        plt.loglog(input_frequencies,  input_psd_values, color="#073AA0", label='Input PSD', linewidth=3)
+        plt.loglog(estimated_frequencies, estimated_psd_values, color="#D8660E", label='Welch Estimated PSD', linewidth=1.8)
+        plt.loglog(input_frequencies,  input_psd_values, color="#073AA0", label='Input PSD', linewidth=1.8, linestyle='--')
 
         plt.title(title)
         plt.xlabel("Frequency [Hz]")
@@ -534,6 +694,8 @@ class Plotter:
         plt.legend(loc="upper right", frameon=True)
 
         fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
+        if x_limits is not None:
+            plt.xlim(x_limits)
         plt.close(fig)
 
 
@@ -547,11 +709,12 @@ class Plotter:
 
         fig = plt.figure(figsize=(10, 6))
 
-        plt.loglog(frequencies,  asd_values, color="#073AA0", label='Analytical ASD', linewidth=4)
+        plt.loglog(frequencies,  asd_values, color="#073AA0", label='Analytical ASD', linewidth=2.5)
 
         plt.title("KBR System and Oscillator Noise ASD")
         plt.xlabel("Frequency [Hz]")
         plt.ylabel(r"ASD [m Hz$^{-1/2}$]")
+        plt.xlim(1e-5, 1e-1)
         plt.legend(loc="upper right", frameon=True)
 
         fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
@@ -571,6 +734,7 @@ class Plotter:
         plt.title("KBR System and Oscillator Noise Time Series")
         plt.xlabel("Time [s]")
         plt.ylabel("KBR System and Oscillator Noise [m]")
+        plt.xlim(0.5e-5, 1e-1)
 
         fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
         plt.close(fig)
