@@ -679,7 +679,8 @@ class Plotter:
         file_name: str,
         ordinate_label: str = r"PSD [rad$^2$ Hz$^{-1}$]",
         title: str = "Pointing Angle PSD",
-        x_limits: tuple[float, float] | None = None
+        x_limit_inf: float | None = None,
+        x_limit_sup: float | None = None
     ) -> None:
         """Plot comparison between Welch estimated PSD and input PSD."""
 
@@ -693,9 +694,11 @@ class Plotter:
         plt.ylabel(ordinate_label)
         plt.legend(loc="upper right", frameon=True)
 
+        if x_limit_inf is not None and x_limit_sup is not None:
+            plt.xlim(x_limit_inf, x_limit_sup)
+
         fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
-        if x_limits is not None:
-            plt.xlim(x_limits)
+
         plt.close(fig)
 
 
@@ -734,7 +737,6 @@ class Plotter:
         plt.title("KBR System and Oscillator Noise Time Series")
         plt.xlabel("Time [s]")
         plt.ylabel("KBR System and Oscillator Noise [m]")
-        plt.xlim(0.5e-5, 1e-1)
 
         fig.savefig(self.output_path / file_name, bbox_inches="tight", dpi=300)
         plt.close(fig)

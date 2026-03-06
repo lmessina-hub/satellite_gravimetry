@@ -27,7 +27,7 @@ from tudatpy.dynamics.propagation_setup import dependent_variable
 
 
 simulation_start_epoch = DateTime(2005, 3, 1, 0, 0, 0).to_epoch()
-simulation_end_epoch = DateTime(2005, 4, 1, 0, 0, 0).to_epoch() 
+simulation_end_epoch = DateTime(2005, 3, 1, 5, 0, 0).to_epoch() 
 time_step = 5.0  # seconds
 number_epochs = int(np.floor((simulation_end_epoch - simulation_start_epoch) / time_step)) + 1
 
@@ -561,8 +561,8 @@ plotter.plot_aerodynamic_acceleration_time_series(
 plotter.plot_attitude_triads_orientation(
     dependent_variables_array=dependent_variables_array,
     grace_fo_position_data=grace_fo_position_data,
-    epoch_idx=5000,
-    file_name="grace_fo_attitude_triads_epoch_5000.png"
+    epoch_idx=100,
+    file_name="grace_fo_attitude_triads_epoch_100.png"
 )
 
 
@@ -570,35 +570,35 @@ plotter.plot_attitude_triads_orientation(
 # GPS POSITION MEASUREMENT SIMULATION 
 # =====================================
 
-# sigma_gps_position_rtn = np.array([0.02, 0.02, 0.02])  # [R, T, N] in meters
+sigma_gps_position_rtn = np.array([0.02, 0.02, 0.02])  # [R, T, N] in meters
 
-# eci_gps_position_noise_grace_fo_a, rtn_gps_position_noise_grace_fo_a = NoiseGenerator.generate_gps_position_noise(
-#     state_vector=states_array[:, 1:7],  # GRACE-FO A state
-#     sigma_rtn=sigma_gps_position_rtn,
-#     seed=40
-# )
+eci_gps_position_noise_grace_fo_a, rtn_gps_position_noise_grace_fo_a = NoiseGenerator.generate_gps_position_noise(
+    state_vector=states_array[:, 1:7],  # GRACE-FO A state
+    sigma_rtn=sigma_gps_position_rtn,
+    seed=40
+)
 
-# eci_gps_position_noise_grace_fo_b, rtn_gps_position_noise_grace_fo_b = NoiseGenerator.generate_gps_position_noise(
-#     state_vector=states_array[:, 7:13],  # GRACE-FO B state
-#     sigma_rtn=sigma_gps_position_rtn,
-#     seed=41
-# )
+eci_gps_position_noise_grace_fo_b, rtn_gps_position_noise_grace_fo_b = NoiseGenerator.generate_gps_position_noise(
+    state_vector=states_array[:, 7:13],  # GRACE-FO B state
+    sigma_rtn=sigma_gps_position_rtn,
+    seed=41
+)
 
-# Plotter.plot_rtn_error_projections(
-#     plotter,
-#     samples_rtn=rtn_gps_position_noise_grace_fo_a[0, :, :],  
-#     sigma_rtn=sigma_gps_position_rtn,
-#     epoch_idx=10,
-#     file_name="grace_fo_a_gps_noise_rtn_projections_epoch_10.png"
-# )
+Plotter.plot_rtn_error_projections(
+    plotter,
+    samples_rtn=rtn_gps_position_noise_grace_fo_a[0, :, :],  
+    sigma_rtn=sigma_gps_position_rtn,
+    epoch_idx=10,
+    file_name="grace_fo_a_gps_noise_rtn_projections_epoch_10.png"
+)
 
-# Plotter.plot_rtn_error_projections(
-#     plotter,
-#     samples_rtn=rtn_gps_position_noise_grace_fo_b[0, :, :],  
-#     sigma_rtn=sigma_gps_position_rtn,
-#     epoch_idx=20,
-#     file_name="grace_fo_b_gps_noise_rtn_projections_epoch_20.png"
-# )
+Plotter.plot_rtn_error_projections(
+    plotter,
+    samples_rtn=rtn_gps_position_noise_grace_fo_b[0, :, :],  
+    sigma_rtn=sigma_gps_position_rtn,
+    epoch_idx=20,
+    file_name="grace_fo_b_gps_noise_rtn_projections_epoch_20.png"
+)
 
 # =====================================
 # KBR RANGE MEASUREMENT SIMULATION 
@@ -607,7 +607,7 @@ plotter.plot_attitude_triads_orientation(
 # Generate KBR system and oscillator noise time series for each satellite
 kbr_system_and_oscillator_noise_timeseries = NoiseGenerator.generate_kbr_system_and_oscillator_noise(
    plotter,
-   time_data.shape[0],
+   number_epochs,
    seed=42
 )
 
