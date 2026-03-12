@@ -1,0 +1,6 @@
+GRACE-FO/
+kernels/
+.vscode/
+src/__pycache__/
+*.pyc
+*:Zone.Identifier
